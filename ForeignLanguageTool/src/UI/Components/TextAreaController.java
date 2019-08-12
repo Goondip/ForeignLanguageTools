@@ -7,6 +7,7 @@ package UI.Components;
 
 import UI.Model.Model;
 import DataModel.DTO.Card;
+import DataModel.DTO.Doc;
 import DataModel.DTO.LanguagePair;
 import DataModel.DTO.Note;
 import Logic.ActualAPI;
@@ -22,12 +23,18 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.geometry.Insets;
+import javafx.scene.Node;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.IndexRange;
 import javafx.scene.control.TextArea;
 import javafx.scene.layout.GridPane;
+import javafx.scene.web.HTMLEditor;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
+
+
 
 /**
  * FXML Controller class
@@ -39,15 +46,63 @@ public class TextAreaController implements Initializable {
     Model model = Model.getInstance();
     ActualAPI api = ActualAPI.getInstance();
 
+    //Scripts to extract Selection from HTMLEditor
+    private static final String SELECT_TEXT = "window.getSelection().toString();";
+    
+    //TextArea area;
     @FXML
-    TextArea area;
+    HTMLEditor area;
+    
+    public static WebView webView;
+    public static WebEngine engine;
+    
+    public static void hideHTMLEditorToolbars(final HTMLEditor editor) {
+        editor.setVisible(false);
+        Platform.runLater(() -> {
+            Node[] nodes = editor.lookupAll(".tool-bar").toArray(new Node[0]);
+            for (Node node : nodes) {
+                node.setVisible(false);
+                node.setManaged(false);
+            }
+            editor.setVisible(true);
+        });
+    }
+    
+    
     /**
      * Initializes the controller class.
      */
     @Override
     public void initialize(URL url, ResourceBundle rb) {
+        
+        //Hide toolbars
+        hideHTMLEditorToolbars(area);
+        
+        webView = (WebView)area.lookup("WebView");
+        engine = webView.getEngine();
+        
+        
+        
         model.currentDocumentProperty().addListener((e)->{
-            area.setText(model.getCurrentDocument().getText());
+            Doc doc = model.getCurrentDocument();
+            
+            String s = doc.getText();
+            String result = "";
+
+            List<Card> cards = ActualAPI.getInstance().getCards(doc);
+            List<Note> notes = ActualAPI.getInstance().getNote(doc);
+            
+            //Highlight all cards
+            for(int i=0;i<cards.size();i++) {
+                Card c = cards.get(i);
+                
+                String w = c.getWordAsAppears();
+                String toReplace = "<mark>" + w + "</mark>";
+                result = s.replaceAll(w,toReplace);
+                s = result;
+            }
+            
+            area.setHtmlText(result);
         });
         Define.setLangCodes();
     }
@@ -95,25 +150,26 @@ public class TextAreaController implements Initializable {
     @FXML
     private void newCardWordEvent() {
         String selectedStr = "";
-
-        selectedStr = area.getSelectedText();
-        IndexRange range = area.getSelection();
+        
+        Object selection = engine.executeScript(SELECT_TEXT);
+        selectedStr = (String) selection;
         
         Card wordcard = new Card();
         wordcard = ActualAPI.getInstance().createCard(model.getCurrentDocument(), wordcard);
         wordcard.setWordAsAppears(selectedStr);
-        wordcard.setStartChar(range.getStart());
-        wordcard.setEndChar(range.getEnd());
+        //wordcard.setStartChar(start);
+        //wordcard.setEndChar(end);
         CardCreationController newCard = new CardCreationController(model.getCurrentDocument(), wordcard);
-        
+        wordcard.update();
+        model.cardsListProperty().add(wordcard);
     }
 
     @FXML
     private void newCardDefineEvent() {
         String selectedStr = "";
 
-        selectedStr = area.getSelectedText();
-        IndexRange range = area.getSelection();
+        Object selection = engine.executeScript(SELECT_TEXT);
+        selectedStr = (String) selection;
         
         Card definecard = new Card();
         definecard = ActualAPI.getInstance().createCard(model.getCurrentDocument(), definecard);
@@ -127,13 +183,14 @@ public class TextAreaController implements Initializable {
 
         String translate = Define.getDefinition(targetCode, naturalCode, selectedStr);
         definecard.setWordAsAppears(selectedStr);
-        // definecard.setGeneric("Test");
+        //definecard.setGeneric("Test");
         definecard.setTransInContext(translate);
-        definecard.setStartChar(range.getStart());
-        definecard.setEndChar(range.getEnd());
+        //definecard.setStartChar(start);
+        //definecard.setEndChar(end);
         // definecard.setPartOfSpeech("Test");
         // definecard.setOtherTrans("Test");
         CardCreationController newCard = new CardCreationController(model.getCurrentDocument(), definecard);
-        
+        definecard.update();
+        model.cardsListProperty().add(definecard);
     }
 }
